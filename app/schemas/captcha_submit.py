@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
+#
 
 class CaptchaSubmitRequest(BaseModel):
     """
@@ -9,7 +10,7 @@ class CaptchaSubmitRequest(BaseModel):
         default=None, 
         description="사용자의 드래그 행동 데이터 [[x, y, t], ...]"
     )
-    answer: Optional[List[str]] = Field(
+    user_answer: Optional[List[str]] = Field(
         default=None, 
         description="Phase B 정답 배열"
     )

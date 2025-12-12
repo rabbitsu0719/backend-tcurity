@@ -1,36 +1,65 @@
 # app/endpoints/phase_a_endpoints.py
 
-from fastapi import APIRouter, Header, status
-from app.services.phase_a_service import request_phase_a_problem
+from fastapi import APIRouter, Header
+
+from app.schemas.common import BaseResponse, ErrorInfo
+from app.schemas.error_codes import ErrorCode
+
+from app.core.session_store import get_session_and_validate,update_session, set_session_status
+from app.core.state_machine import SessionStatus
+
+from app.services.phase_a_service import generate_phase_a_both
 
 
 router = APIRouter(tags=["CAPTCHA"])
 
 
-@router.post("/request", status_code=status.HTTP_200_OK)
+@router.post("/request", response_model=BaseResponse)
 def captcha_request_problem(
     session_id: str = Header(..., alias="X-Session-Id")
 ):
     """
-    1.2 Captcha 문제 요청 API (Phase A 문제 제공)
-    
-    - 세션 상태가 INIT 또는 PHASE_A일 때 호출할 수 있습니다.
-    - 서버는 매 요청마다 새로운 Phase A 문제(티켓 절취선 이미지)를 생성하여 반환합니다.
-    - Phase B 문제는 /api/v1/captcha/submit 에서 Phase A 검증 성공 후 제공됩니다.
-    
-    Request Header:
-        X-Session-Id: 세션 ID
-
-    Response (200):
-        {
-          "status": "PHASE_A",
-          "problem": {
-            "phase": "1/2",
-            "image": "base64_image_string",
-            "cut_rectangle": [...],
-            "guide_text": "절취선을 따라 드래그하세요.",
-            "time_limit": 300
-          }
-        }
+    Phase A 문제 요청 엔드포인트
+    - INIT 또는 PHASE_A 상태에서만 호출 가능
+    - 서버는 FE용 payload + 내부 정답 데이터(target_path)를 분리하여 저장
     """
-    return request_phase_a_problem(session_id)
+
+    # 세션 확인
+    session = get_session_and_validate(session_id)
+    current_status = SessionStatus(session["status"])
+
+    # 상태 가드
+    if current_status not in (SessionStatus.INIT, SessionStatus.PHASE_A):
+        return BaseResponse(
+            status=current_status.value,
+            success=False,
+            error=ErrorInfo(
+                code=ErrorCode.INVALID_STATE,
+                message=f"현재 상태({current_status.value})에서는 Phase A 문제 요청이 불가능합니다."
+            ),
+            message="요청하신 단계에서 문제를 생성할 수 없습니다."
+        )
+
+    # Phase A 문제 생성 (FE + Internal)
+    fe_payload, internal_payload = generate_phase_a_both()
+
+    # 세션 업데이트 (정답 target_path 저장)
+    update_session(
+        session_id,
+        {
+            "phase_a": {
+                "target_path": internal_payload["target_path"],
+                "attempts": session["phase_a"]["attempts"]  # 기존 실패 횟수 유지
+            }
+        }
+    )
+
+    set_session_status(session_id, SessionStatus.PHASE_A)
+
+
+    # 정상 응답 반환
+    return BaseResponse(
+        status=SessionStatus.PHASE_A.value,
+        success=True,
+        data={"problem": fe_payload}
+    )
