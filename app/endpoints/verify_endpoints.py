@@ -62,6 +62,7 @@ def captcha_submit(
     # COMPLETED 처리
     # -------------------------
     if status == SessionStatus.COMPLETED:
+        
         return BaseResponse(
             status=status.value,
             success=False,

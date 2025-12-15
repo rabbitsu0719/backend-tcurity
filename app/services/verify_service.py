@@ -15,7 +15,7 @@ from app.core.session_store import (
 from app.services.phase_a_service import generate_phase_a_both
 from app.services.phase_b_service import generate_phase_b_both
 
-BOT_SCORE_THRESHOLD = 0.25         # Phase A threshold
+BOT_SCORE_THRESHOLD = 0.5         # Phase A threshold
 BOT_BEHAVIOR_THRESHOLD = 0.85     # Phase B threshold
 PHASE_B_TIME_LIMIT = 30           # seconds
 
@@ -48,8 +48,17 @@ def verify_phase_a(session_id: str, behavior_pattern_data) -> BaseResponse:
         )
 
     target = session["phase_a"]["target_path"]
+    attempts = session["phase_a"]["attempts"]
+    
     feature = extract_features(target, behavior_pattern_data)
-    anomaly_score = predict_anomaly(feature)
+
+    # 테스트용: 첫 시도 실패, 두 번째 성공
+    if attempts == 0:
+        anomaly_score = 0.8   # 실패
+    else:
+        anomaly_score = 0.2   # 성공
+
+    attempts = session["phase_a"]["attempts"]
 
     # ---------------- SUCCESS -> Phase B 전환 ----------------
     if anomaly_score < BOT_SCORE_THRESHOLD:

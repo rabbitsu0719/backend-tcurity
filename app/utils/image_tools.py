@@ -1,12 +1,12 @@
-# def generate_phase_a_problem():
-#     """
-#     실제 Phase A 문제 생성 로직 대신 서버 실행을 위한 더미 함수.
-#     """
-#     return {
-#         "image_base64": "base64_dummy_image",
-#         "target_path": [{"x": 10, "y": 20, "t": 0}, {"x": 20, "y": 30, "t": 10}],
-#         "cut_rectangle": [10, 5, 10, 50]
-#     }
+def generate_phase_a_problem():
+    """
+    실제 Phase A 문제 생성 로직 대신 서버 실행을 위한 더미 함수.
+    """
+    return {
+        "image_base64": "base64_dummy_image",
+        "target_path": [{"x": 10, "y": 20, "t": 0}, {"x": 20, "y": 30, "t": 10}],
+        "cut_rectangle": [10, 5, 10, 50]
+    }
 
 
 # def to_base64(img):
