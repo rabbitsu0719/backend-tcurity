@@ -1,35 +1,4 @@
-# def generate_phase_a_problem():
-#     """
-#     실제 Phase A 문제 생성 로직 대신 서버 실행을 위한 더미 함수.
-#     """
-#     return {
-#         "image_base64": "base64_dummy_image",
-#         "target_path": [{"x": 10, "y": 20, "t": 0}, {"x": 20, "y": 30, "t": 10}],
-#         "cut_rectangle": [10, 5, 10, 50]
-#     }
-
-
-# # def to_base64(img):
-# #     """
-# #     placeholder 함수 — 이미지 base64 변환 대신 문자열 반환
-# #     """
-# #     return "base64_dummy"
-
-
-# # def apply_watermark_and_noise(img, order, fail_count):
-# #     """
-# #     Phase B 이미지 워터마크/노이즈 더미 처리 함수
-# #     """
-# #     return img
-# def load_random_grid_images(n):
-#     return {"images": [None] * n, "labels": [str(i) for i in range(n)]}
-
-# def apply_watermark_and_noise(img, order, fail_count):
-#     return img
-
-# def to_base64(img):
-#     return "dummy_base64"
-
+# app/utils/image_tools.py
 
 
 import cv2
@@ -96,10 +65,15 @@ def generate_phase_a_problem():
     y_min, y_max = metadata["ticket_y_range"]
     cut_rectangle = [base_x - 10, y_min, 20, y_max - y_min]
     
+    # 이미지 크기 (백분율 변환용)
+    img_h, img_w = canvas.shape[:2]
+    
     return {
         "image_base64": image_base64,
         "target_path": target_path,
-        "cut_rectangle": cut_rectangle
+        "cut_rectangle": cut_rectangle,
+        "image_width": img_w,
+        "image_height": img_h
     }
 
 # ==========================================================
@@ -145,9 +119,19 @@ def generate_cutline(
     # ------------------------
     # 이미지 로드
     # ------------------------
-    img = cv2.imread(img_path)
+    img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)  # BGRA 가능
+
     if img is None:
         raise FileNotFoundError(f"입력 이미지 없음: {img_path}")
+
+    # 혹시 3채널로 들어오면 알파를 붙여줌(안전장치)
+    if len(img.shape) == 3 and img.shape[2] == 3:
+        alpha = np.full((img.shape[0], img.shape[1], 1), 255, dtype=img.dtype)
+        img = np.concatenate([img, alpha], axis=2)  # BGR + A
+
+    canvas = img.copy()
+
+    color = (255, 255, 255, 255)  # 흰색 + 불투명
 
     h, w = img.shape[:2]
 
@@ -188,7 +172,7 @@ def generate_cutline(
     # ------------------------
     canvas = img.copy()
     segment_length = int(dash_length * segment_ratio)
-    color = (255, 255, 255)
+    color = (255, 255, 255, 255) # 흰색 + 불투명
 
     for i in range(0, len(curve_points), dash_length):
 

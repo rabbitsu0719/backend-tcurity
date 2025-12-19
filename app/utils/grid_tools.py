@@ -1,3 +1,5 @@
+# app/utils/grid_tools.py
+
 def load_random_grid_images(grid_size: int):
     """
     Phase B grid 문제 제공을 위한 더미 이미지 로더

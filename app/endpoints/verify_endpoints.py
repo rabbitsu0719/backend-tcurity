@@ -1,7 +1,7 @@
 # app/endpoints/verify_endpoints.py
 
-
 from fastapi import APIRouter, Header
+from pydantic import BaseModel
 
 from app.schemas.captcha_submit import CaptchaSubmitRequest
 from app.schemas.common import BaseResponse, ErrorInfo
@@ -13,6 +13,11 @@ from app.core.state_machine import SessionStatus
 from app.services.verify_service import verify_phase_a, verify_phase_b
 
 router = APIRouter(tags=["CAPTCHA Submit"])
+
+
+class CaptchaVerifyRequest(BaseModel):
+    """세션 검증 요청 스키마"""
+    session_id: str
 
 
 @router.post("/submit", response_model=BaseResponse)
@@ -28,8 +33,11 @@ def captcha_submit(
     # PHASE A 처리
     # -------------------------
     if status == SessionStatus.PHASE_A:
+        bpd = request.behavior_pattern_data
+        if bpd is None and request.points is not None and request.metadata is not None:
+            bpd = {"points": request.points, "metadata": request.metadata}
 
-        if request.behavior_pattern_data is None:
+        if bpd is None:
             return BaseResponse(
                 status=status.value,
                 success=False,
@@ -39,7 +47,7 @@ def captcha_submit(
                 )
             )
 
-        return verify_phase_a(session_id, request.behavior_pattern_data)
+        return verify_phase_a(session_id, bpd)
 
     # -------------------------
     # PHASE B 처리
@@ -82,4 +90,15 @@ def captcha_submit(
             code=ErrorCode.INVALID_STATE,
             message=f"현재 상태({status.value})에서는 제출할 수 없습니다."
         )
+    )
+
+
+@router.post("/verify", response_model=BaseResponse)
+def captcha_verify(req: CaptchaVerifyRequest):
+    session = get_session_and_validate(req.session_id)
+    status = SessionStatus(session["status"])
+    return BaseResponse(
+        status=status.value,
+        success=(status == SessionStatus.COMPLETED),
+        data={"session_id": req.session_id}
     )
