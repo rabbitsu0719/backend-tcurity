@@ -1,5 +1,3 @@
-# app/services/logging_service.py
-
 import logging
 import json
 from datetime import datetime

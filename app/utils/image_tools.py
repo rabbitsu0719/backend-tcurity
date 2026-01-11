@@ -1,6 +1,3 @@
-# app/utils/image_tools.py
-
-
 import cv2
 import numpy as np
 import random
@@ -21,24 +18,136 @@ def to_base64(img):
     return base64.b64encode(buffer).decode('utf-8')
 
 
-def apply_watermark_and_noise(img, order, fail_count):
+def apply_adversarial_noise(img_np, difficulty: str, fail_count: int):
     """
-    Phase B 이미지에 워터마크/노이즈 적용
-    - order: 정답 순서 (0이면 정답 아님)
-    - fail_count: 실패 횟수에 따라 노이즈 강도 조절 가능
+    Adversarial-like Noise 적용
+    
+    Args:
+        img_np: numpy array (BGR)
+        difficulty: 'NORMAL', 'MEDIUM', 'HIGH'
+        fail_count: 실패 횟수 (추가 노이즈 강도에 영향)
+    
+    Returns:
+        노이즈가 적용된 numpy array (BGR)
+    
+    노이즈 종류:
+        - 가우시안 노이즈 (Gaussian Noise)
+        - 색상 왜곡 (Color Jitter)
+        - 밝기/대비 변화 (Brightness/Contrast)
     """
-    if img is None:
-        return img
+    if difficulty == "NORMAL":
+        return img_np  # 노이즈 없음
     
-    result = img.copy()
+    # 난이도별 노이즈 강도 설정
+    if difficulty == "MEDIUM":
+        base_noise_level = 10  # 약한 노이즈
+        color_shift = 5
+        brightness_range = 0.1
+    else:  # HIGH
+        base_noise_level = 25  # 강한 노이즈
+        color_shift = 15
+        brightness_range = 0.2
     
-    # 실패 횟수에 따른 노이즈 추가 (선택적)
-    if fail_count > 0:
-        noise_intensity = min(fail_count * 5, 30)
-        noise = np.random.randint(-noise_intensity, noise_intensity, result.shape, dtype=np.int16)
-        result = np.clip(result.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+    # 실패 횟수에 따라 노이즈 강도 추가 (최대 2배)
+    multiplier = 1.0 + (fail_count * 0.3)
+    multiplier = min(multiplier, 2.0)
     
-    return result
+    noise_level = int(base_noise_level * multiplier)
+    color_shift = int(color_shift * multiplier)
+    
+    img_float = img_np.astype(np.float32)
+    
+    # 1. 가우시안 노이즈 추가
+    noise = np.random.normal(0, noise_level, img_float.shape).astype(np.float32)
+    img_float = img_float + noise
+    
+    # 2. 색상 왜곡 (각 채널별 랜덤 shift)
+    for c in range(3):
+        shift = random.randint(-color_shift, color_shift)
+        img_float[:, :, c] = img_float[:, :, c] + shift
+    
+    # 3. 밝기/대비 변화
+    brightness = 1.0 + random.uniform(-brightness_range, brightness_range)
+    img_float = img_float * brightness
+    
+    # 클리핑 (0-255 범위로 제한)
+    img_float = np.clip(img_float, 0, 255)
+    
+    return img_float.astype(np.uint8)
+
+
+def apply_watermark_and_noise(img, number, fail_count, difficulty: str = "NORMAL"):
+    """
+    Phase B 이미지에 숫자 워터마크 + Adversarial-like Noise 적용
+    
+    Args:
+        img: PIL Image 또는 numpy array
+        number: 이미지에 표시할 숫자 (1~9)
+        fail_count: 실패 횟수 (노이즈 강도에 영향)
+        difficulty: 난이도 ('NORMAL', 'MEDIUM', 'HIGH')
+    """
+    from PIL import ImageDraw, ImageFont
+    
+    # PIL Image로 변환 (없으면 그대로)
+    if not hasattr(img, 'mode'):
+        # numpy array → PIL Image
+        if len(img.shape) == 3:
+            img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        else:
+            img = Image.fromarray(img)
+    
+    # RGB로 변환 (RGBA, L 등 다양한 모드 처리)
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    
+    # 숫자 워터마크 추가 (1~9 모두 표시)
+    if number > 0:
+        draw = ImageDraw.Draw(img)
+        text = str(number)
+        
+        # 폰트 크기 계산 (이미지 크기에 비례)
+        w, h = img.size
+        font_size = max(20, int(min(w, h) / 10))
+        
+        try:
+            # 시스템 기본 폰트 사용 시도
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except:
+            try:
+                # macOS 폰트
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+            except:
+                # 기본 폰트 (크기 조절 불가)
+                font = ImageFont.load_default()
+        
+        # 텍스트 크기 계산
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        
+        # 우측 상단에 배치
+        padding = 10
+        x = w - text_w - padding
+        y = padding
+        
+        # 배경 (반투명 검은색 사각형)
+        bg_padding = 5
+        draw.rectangle(
+            [x - bg_padding, y - bg_padding, x + text_w + bg_padding, y + text_h + bg_padding],
+            fill=(0, 0, 0, 180)
+        )
+        
+        # 텍스트 (흰색)
+        draw.text((x, y), text, fill=(255, 255, 255), font=font)
+    
+    # PIL Image → numpy array (cv2 형식)
+    img_np = np.array(img)
+    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    
+    # Adversarial-like Noise 적용
+    img_np = apply_adversarial_noise(img_np, difficulty, fail_count)
+    
+    return img_np
 
 
 # ==========================================================
@@ -63,10 +172,19 @@ def generate_phase_a_problem():
     
     base_x = metadata["base_x"]
     y_min, y_max = metadata["ticket_y_range"]
-    cut_rectangle = [base_x - 10, y_min, 20, y_max - y_min]
+    
+    # 절취선 영역 정의 (중심 축 기준)
+    CUT_WIDTH = 50  # 절취선 폭
+    cut_rectangle = [
+        base_x - CUT_WIDTH // 2,  # 중심에서 절반만큼 왼쪽
+        y_min,
+        CUT_WIDTH,
+        y_max - y_min
+    ]
     
     # 이미지 크기 (백분율 변환용)
     img_h, img_w = canvas.shape[:2]
+
     
     return {
         "image_base64": image_base64,
@@ -105,7 +223,7 @@ def generate_cutline(
     x_jitter=2,
     ticket_y_ratio=(0.10, 0.89),
     dash_length=13,
-    thickness=20,
+    thickness=32,
     segment_ratio=1.3
 ):
     """
